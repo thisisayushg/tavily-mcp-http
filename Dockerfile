@@ -19,4 +19,4 @@ ENV TAVILY_API_KEY=your-api-key-here
 
 RUN npm ci --ignore-scripts --omit-dev
 
-ENTRYPOINT ["node", "build/index.js"]
+CMD ["npx", "-y", "mcp-remote", "https://mcp.tavily.com/mcp/?tavilyApiKey=$TAVILY_API_KEY"]
