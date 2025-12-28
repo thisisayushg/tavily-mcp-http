@@ -732,6 +732,10 @@ app.all("/mcp", async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.error(`Tavily MCP HTTP Server running on http://localhost:${PORT}/mcp`);
+app.listen(PORT, (e) => {
+  if(e){
+    console.error(e)
+  }else{
+    console.info(`Tavily MCP HTTP Server running on http://localhost:${PORT}/mcp`);
+  }
 });
