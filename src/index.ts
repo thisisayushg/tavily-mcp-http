@@ -1,13 +1,12 @@
 #!/usr/bin/env node
-
+import express from 'express';
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {CallToolRequestSchema, ListToolsRequestSchema, Tool} from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
 import dotenv from "dotenv";
+import { TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments } from "./schema.js";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
-import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
 
 dotenv.config();
 
@@ -17,45 +16,9 @@ if (!API_KEY) {
 }
 
 
-interface TavilyResponse {
-  // Response structure from Tavily API
-  query: string;
-  follow_up_questions?: Array<string>;
-  answer?: string;
-  images?: Array<string | {
-    url: string;
-    description?: string;
-  }>;
-  results: Array<{
-    title: string;
-    url: string;
-    content: string;
-    score: number;
-    published_date?: string;
-    raw_content?: string;
-    favicon?: string;
-  }>;
-}
-
-interface TavilyCrawlResponse {
-  base_url: string;
-  results: Array<{
-    url: string;
-    raw_content: string;
-    favicon?: string;
-  }>;
-  response_time: number;
-}
-
-interface TavilyMapResponse {
-  base_url: string;
-  results: string[];
-  response_time: number;
-}
-
 class TavilyClient {
   // Core client properties
-  private server: Server;
+  server: Server;
   private axiosInstance;
   private baseURLs = {
     search: 'https://api.tavily.com/search',
@@ -520,11 +483,6 @@ class TavilyClient {
   }
 
 
-  async run(): Promise<void> {
-    const transport = new StdioServerTransport();
-    await this.server.connect(transport);
-    console.error("Tavily MCP server running on stdio");
-  }
 
   async search(params: any): Promise<TavilyResponse> {
     try {
@@ -749,28 +707,31 @@ function listTools(): void {
   process.exit(0);
 }
 
-// Add this interface before the command line parsing
-interface Arguments {
-  'list-tools': boolean;
-  _: (string | number)[];
-  $0: string;
-}
+// ... (Your existing tool definitions and server initialization here) ...
+const server = new TavilyClient()
+const app = express();
+app.use(express.json());
 
-// Modify the command line parsing section to use proper typing
-const argv = yargs(hideBin(process.argv))
-  .option('list-tools', {
-    type: 'boolean',
-    description: 'List all available tools and exit',
-    default: false
-  })
-  .help()
-  .parse() as Arguments;
+app.all("/mcp", async (req, res) => {
+  // Create a new transport for each session
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined, // Uses default UUIDs
+    enableJsonResponse: true
+  });
 
-// List tools if requested
-if (argv['list-tools']) {
-  listTools();
-}
+  // Ensure transport closes when client disconnects
+  res.on('close', () => {
+    transport.close();
+  });
 
-// Otherwise start the server
-const server = new TavilyClient();
-server.run().catch(console.error);
+  // Connect the existing MCP server instance to this HTTP transport
+  await server.server.connect(transport);
+  
+  // Handle the specific request
+  await transport.handleRequest(req, res, req.body);
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.error(`Tavily MCP HTTP Server running on http://localhost:${PORT}/mcp`);
+});
