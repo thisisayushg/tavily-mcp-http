@@ -5,7 +5,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import {CallToolRequestSchema, ListToolsRequestSchema, Tool} from "@modelcontextprotocol/sdk/types.js";
 import axios from "axios";
 import dotenv from "dotenv";
-import { TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments } from "./schema.js";
+import { TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments, TavilyResearchResponse } from "./schema.js";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 
 dotenv.config();
@@ -24,14 +24,23 @@ class TavilyClient {
     search: 'https://api.tavily.com/search',
     extract: 'https://api.tavily.com/extract',
     crawl: 'https://api.tavily.com/crawl',
-    map: 'https://api.tavily.com/map'
+    map: 'https://api.tavily.com/map',
+    research: 'https://api.tavily.com/research'
+  };
+
+  private docsURLs: Record<string, string> = {
+    search: 'https://docs.tavily.com/documentation/api-reference/endpoint/search',
+    extract: 'https://docs.tavily.com/documentation/api-reference/endpoint/extract',
+    crawl: 'https://docs.tavily.com/documentation/api-reference/endpoint/crawl',
+    map: 'https://docs.tavily.com/documentation/api-reference/endpoint/map',
+    research: 'https://docs.tavily.com/documentation/api-reference/endpoint/research',
   };
 
   constructor() {
     this.server = new Server(
       {
         name: "tavily-mcp",
-        version: "0.2.10",
+        version: "0.2.18",
       },
       {
         capabilities: {
@@ -54,7 +63,7 @@ class TavilyClient {
   }
 
   private setupErrorHandling(): void {
-    this.server.onerror = (error) => {
+    this.server.onerror = (error: any) => {
       console.error("[MCP Error]", error);
     };
 
@@ -69,7 +78,7 @@ class TavilyClient {
      * 
      * The environment variable DEFAULT_PARAMETERS should contain a JSON string 
      * with parameter names and their default values.
-     * Example: DEFAULT_PARAMETERS='{"search_depth":"basic","topic":"news"}'
+     * Example: DEFAULT_PARAMETERS='{"search_depth":"basic","include_images":true}'
      * 
      * Returns:
      *   Object with default parameter values, or empty object if env var is not present or invalid.
@@ -102,11 +111,11 @@ class TavilyClient {
 
   private setupToolHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      // Define available tools: tavily-search and tavily-extract
+      // Define available tools: tavily_search and tavily_extract
       const tools: Tool[] = [
         {
-          name: "tavily-search",
-          description: "A powerful web search tool that provides comprehensive, real-time results using Tavily's AI search engine. Returns relevant web content with customizable parameters for result count, content type, and domain filtering. Ideal for gathering current information, news, and detailed web content analysis.",
+          name: "tavily_search",
+          description: "Search the web for current information on any topic. Use for news, facts, or data beyond your knowledge cutoff. Returns snippets and source URLs.",
           inputSchema: {
             type: "object",
             properties: {
@@ -122,19 +131,14 @@ class TavilyClient {
               },
               topic : {
                 type: "string",
-                enum: ["general","news"],
+                enum: ["general"],
                 description: "The category of the search. This will determine which of our agents will be used for the search",
                 default: "general"
               },
-              days: {
-                type: "number",
-                description: "The number of days back from the current date to include in the search results. This specifies the time frame of data to be retrieved. Please note that this feature is only available when using the 'news' search topic",
-                default: 3
-              },
               time_range: {
                 type: "string",
-                description: "The time range back from the current date to include in the search results. This feature is available for both 'general' and 'news' search topics",
-                enum: ["day", "week", "month", "year", "d", "w", "m", "y"],
+                description: "The time range back from the current date to include in the search results",
+                enum: ["day", "week", "month", "year"]
               },
               start_date: {
                 type: "string",
@@ -149,7 +153,7 @@ class TavilyClient {
               max_results: { 
                 type: "number", 
                 description: "The maximum number of search results to return",
-                default: 10,
+                default: 5,
                 minimum: 5,
                 maximum: 20
               },
@@ -161,21 +165,12 @@ class TavilyClient {
               include_image_descriptions: { 
                 type: "boolean", 
                 description: "Include a list of query-related images and their descriptions in the response",
-                default: false,
+                default: false
               },
-              /*
-              // Since the mcp server is using AI clients to generate answers form the search results, we don't need to include this feature.
-              include_answer: { 
-                type: ["boolean", "string"],
-                enum: [true, false, "basic", "advanced"],
-                description: "Include an answer to original query, generated by an LLM based on Tavily's search results. Can be boolean or string ('basic'/'advanced'). 'basic'/true answer will be quick but less detailed, 'advanced' answer will be more detailed but take longer to generate",
-                default: false,
-              },
-              */
-              include_raw_content: { 
-                type: "boolean", 
+              include_raw_content: {
+                type: "boolean",
                 description: "Include the cleaned and parsed HTML content of each search result",
-                default: false,
+                default: false
               },
               include_domains: {
                 type: "array",
@@ -191,22 +186,21 @@ class TavilyClient {
               },
               country: {
                 type: "string",
-                enum: ['afghanistan', 'albania', 'algeria', 'andorra', 'angola', 'argentina', 'armenia', 'australia', 'austria', 'azerbaijan', 'bahamas', 'bahrain', 'bangladesh', 'barbados', 'belarus', 'belgium', 'belize', 'benin', 'bhutan', 'bolivia', 'bosnia and herzegovina', 'botswana', 'brazil', 'brunei', 'bulgaria', 'burkina faso', 'burundi', 'cambodia', 'cameroon', 'canada', 'cape verde', 'central african republic', 'chad', 'chile', 'china', 'colombia', 'comoros', 'congo', 'costa rica', 'croatia', 'cuba', 'cyprus', 'czech republic', 'denmark', 'djibouti', 'dominican republic', 'ecuador', 'egypt', 'el salvador', 'equatorial guinea', 'eritrea', 'estonia', 'ethiopia', 'fiji', 'finland', 'france', 'gabon', 'gambia', 'georgia', 'germany', 'ghana', 'greece', 'guatemala', 'guinea', 'haiti', 'honduras', 'hungary', 'iceland', 'india', 'indonesia', 'iran', 'iraq', 'ireland', 'israel', 'italy', 'jamaica', 'japan', 'jordan', 'kazakhstan', 'kenya', 'kuwait', 'kyrgyzstan', 'latvia', 'lebanon', 'lesotho', 'liberia', 'libya', 'liechtenstein', 'lithuania', 'luxembourg', 'madagascar', 'malawi', 'malaysia', 'maldives', 'mali', 'malta', 'mauritania', 'mauritius', 'mexico', 'moldova', 'monaco', 'mongolia', 'montenegro', 'morocco', 'mozambique', 'myanmar', 'namibia', 'nepal', 'netherlands', 'new zealand', 'nicaragua', 'niger', 'nigeria', 'north korea', 'north macedonia', 'norway', 'oman', 'pakistan', 'panama', 'papua new guinea', 'paraguay', 'peru', 'philippines', 'poland', 'portugal', 'qatar', 'romania', 'russia', 'rwanda', 'saudi arabia', 'senegal', 'serbia', 'singapore', 'slovakia', 'slovenia', 'somalia', 'south africa', 'south korea', 'south sudan', 'spain', 'sri lanka', 'sudan', 'sweden', 'switzerland', 'syria', 'taiwan', 'tajikistan', 'tanzania', 'thailand', 'togo', 'trinidad and tobago', 'tunisia', 'turkey', 'turkmenistan', 'uganda', 'ukraine', 'united arab emirates', 'united kingdom', 'united states', 'uruguay', 'uzbekistan', 'venezuela', 'vietnam', 'yemen', 'zambia', 'zimbabwe'],
-                description: "Boost search results from a specific country. This will prioritize content from the selected country in the search results. Available only if topic is general. Country names MUST be written in lowercase, plain English, with spaces and no underscores.",
+                description: "Boost search results from a specific country. Must be a full country name (e.g., 'United States', 'Japan', 'Germany'). ISO country codes (e.g., 'us', 'jp') are not supported. Available only if topic is general. See https://docs.tavily.com/documentation/api-reference/search for the full list of supported countries.",
                 default: ""
               },
-              include_favicon: { 
-                type: "boolean", 
+              include_favicon: {
+                type: "boolean",
                 description: "Whether to include the favicon URL for each result",
-                default: false,
+                default: false
               }
             },
             required: ["query"]
           }
         },
         {
-          name: "tavily-extract",
-          description: "A powerful web content extraction tool that retrieves and processes raw content from specified URLs, ideal for data collection, content analysis, and research tasks.",
+          name: "tavily_extract",
+          description: "Extract content from URLs. Returns raw page content in markdown or text format.",
           inputSchema: {
             type: "object",
             properties: {
@@ -217,37 +211,37 @@ class TavilyClient {
               },
               extract_depth: { 
                 type: "string",
-                enum: ["basic","advanced"],
-                description: "Depth of extraction - 'basic' or 'advanced', if usrls are linkedin use 'advanced' or if explicitly told to use advanced",
+                enum: ["basic", "advanced"],
+                description: "Use 'advanced' for LinkedIn, protected sites, or tables/embedded content",
                 default: "basic"
               },
-              include_images: { 
-                type: "boolean", 
-                description: "Include a list of images extracted from the urls in the response",
-                default: false,
+              include_images: {
+                type: "boolean",
+                description: "Include images from pages",
+                default: false
               },
               format: {
                 type: "string",
-                enum: ["markdown","text"],
-                description: "The format of the extracted web page content. markdown returns content in markdown format. text returns plain text and may increase latency.",
+                enum: ["markdown", "text"],
+                description: "Output format",
                 default: "markdown"
               },
-              include_favicon: { 
-                type: "boolean", 
-                description: "Whether to include the favicon URL for each result",
-                default: false,
+              include_favicon: {
+                type: "boolean",
+                description: "Include favicon URLs",
+                default: false
               },
               query: {
                 type: "string",
-                description: "User intent query for reranking extracted chunks based on relevance"
-              },
+                description: "Query to rerank content chunks by relevance"
+              }
             },
             required: ["urls"]
           }
         },
         {
-          name: "tavily-crawl",
-          description: "A powerful web crawler that initiates a structured web crawl starting from a specified base URL. The crawler expands from that point like a graph, following internal links across pages. You can control how deep and wide it goes, and guide it to focus on specific sections of the site.",
+          name: "tavily_crawl",
+          description: "Crawl a website starting from a URL. Extracts content from pages with configurable depth and breadth.",
           inputSchema: {
             type: "object",
             properties: {
@@ -316,13 +310,13 @@ class TavilyClient {
           }
         },
         {
-          name: "tavily-map",
-          description: "A powerful web mapping tool that creates a structured map of website URLs, allowing you to discover and analyze site structure, content organization, and navigation paths. Perfect for site audits, content discovery, and understanding website architecture.",
+          name: "tavily_map",
+          description: "Map a website's structure. Returns a list of URLs found starting from the base URL.",
           inputSchema: {
             type: "object",
             properties: {
-              url: { 
-                type: "string", 
+              url: {
+                type: "string",
                 description: "The root URL to begin the mapping"
               },
               max_depth: {
@@ -368,17 +362,45 @@ class TavilyClient {
             required: ["url"]
           }
         },
+        {
+          name: "tavily_research",
+          description: "Perform comprehensive research on a given topic or question. Use this tool when you need to gather information from multiple sources to answer a question or complete a task. Returns a detailed response based on the research findings. Rate limit: 20 requests per minute.",
+          inputSchema: {
+            type: "object",
+            properties: {
+              input: {
+                type: "string",
+                description: "A comprehensive description of the research task"
+              },
+              model: {
+                type: "string",
+                enum: ["mini", "pro", "auto"],
+                description: "Defines the degree of depth of the research. 'mini' is good for narrow tasks with few subtopics. 'pro' is good for broad tasks with many subtopics. 'auto' automatically selects the best model.",
+                default: "auto"
+              }
+            },
+            required: ["input"]
+          }
+        },
       ];
       return { tools };
     });
 
-    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    this.server.setRequestHandler(CallToolRequestSchema, async (request: any) => {
+      // Check for API key at request time and return proper JSON-RPC error
+      if (!API_KEY) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          "TAVILY_API_KEY environment variable is required. Please set it before using this MCP server."
+        );
+      }
+
       try {
         let response: TavilyResponse;
         const args = request.params.arguments ?? {};
 
         switch (request.params.name) {
-          case "tavily-search":
+          case "tavily_search":
             // If country is set, ensure topic is general
             if (args.country) {
               args.topic = "general";
@@ -388,7 +410,6 @@ class TavilyClient {
               query: args.query,
               search_depth: args.search_depth,
               topic: args.topic,
-              days: args.days,
               time_range: args.time_range,
               max_results: args.max_results,
               include_images: args.include_images,
@@ -403,7 +424,7 @@ class TavilyClient {
             });
             break;
           
-          case "tavily-extract":
+          case "tavily_extract":
             response = await this.extract({
               urls: args.urls,
               extract_depth: args.extract_depth,
@@ -414,7 +435,7 @@ class TavilyClient {
             });
             break;
 
-          case "tavily-crawl":
+          case "tavily_crawl":
             const crawlResponse = await this.crawl({
               url: args.url,
               max_depth: args.max_depth,
@@ -436,7 +457,7 @@ class TavilyClient {
               }]
             };
 
-          case "tavily-map":
+          case "tavily_map":
             const mapResponse = await this.map({
               url: args.url,
               max_depth: args.max_depth,
@@ -451,6 +472,18 @@ class TavilyClient {
               content: [{
                 type: "text",
                 text: formatMapResults(mapResponse)
+              }]
+            };
+
+          case "tavily_research":
+            const researchResponse = await this.research({
+              input: args.input,
+              model: args.model
+            });
+            return {
+              content: [{
+                type: "text",
+                text: formatResearchResults(researchResponse)
               }]
             };
 
@@ -469,10 +502,18 @@ class TavilyClient {
         };
       } catch (error: any) {
         if (axios.isAxiosError(error)) {
+          const toolName = request.params.name?.replace('tavily_', '') || '';
+          const docsUrl = this.docsURLs[toolName] || '';
+          const responseData = error.response?.data;
+          const detail = responseData && typeof responseData === 'object'
+            ? (responseData.detail || responseData.message || responseData)
+            : (error.message);
+          const detailStr = typeof detail === 'object' ? JSON.stringify(detail) : String(detail);
+          const docsSuffix = docsUrl ? `\nDocumentation: ${docsUrl}` : '';
           return {
             content: [{
               type: "text",
-              text: `Tavily API error: ${error.response?.data?.message ?? error.message}`
+              text: `Tavily API error: ${detailStr}${docsSuffix}`
             }],
             isError: true,
           }
@@ -495,7 +536,6 @@ class TavilyClient {
         query: params.query,
         search_depth: params.search_depth,
         topic: params.topic,
-        days: params.days,
         time_range: params.time_range,
         max_results: params.max_results,
         include_images: params.include_images,
@@ -518,10 +558,9 @@ class TavilyClient {
       }
       
       // We have to set defaults due to the issue with optional parameter types or defaults = None
-      // Because of this, we have to set the time_range to None if start_date or end_date is set 
+      // Because of this, we have to set the time_range to None if start_date or end_date is set
       // or else start_date and end_date will always cause errors when sent
-      if ((searchParams.start_date || searchParams.end_date) && (searchParams.time_range || searchParams.days)) {
-        searchParams.days = undefined;
+      if ((searchParams.start_date || searchParams.end_date) && searchParams.time_range) {
         searchParams.time_range = undefined;
       }
       
@@ -540,9 +579,9 @@ class TavilyClient {
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 401) {
-        throw new Error('Invalid API key');
+        throw new Error(`Invalid API key. Documentation: ${this.docsURLs.search}`);
       } else if (error.response?.status === 429) {
-        throw new Error('Usage limit exceeded');
+        throw new Error(`Usage limit exceeded. Documentation: ${this.docsURLs.search}`);
       }
       throw error;
     }
@@ -557,9 +596,9 @@ class TavilyClient {
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 401) {
-        throw new Error('Invalid API key');
+        throw new Error(`Invalid API key. Documentation: ${this.docsURLs.extract}`);
       } else if (error.response?.status === 429) {
-        throw new Error('Usage limit exceeded');
+        throw new Error(`Usage limit exceeded. Documentation: ${this.docsURLs.extract}`);
       }
       throw error;
     }
@@ -574,9 +613,9 @@ class TavilyClient {
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 401) {
-        throw new Error('Invalid API key');
+        throw new Error(`Invalid API key. Documentation: ${this.docsURLs.crawl}`);
       } else if (error.response?.status === 429) {
-        throw new Error('Usage limit exceeded');
+        throw new Error(`Usage limit exceeded. Documentation: ${this.docsURLs.crawl}`);
       }
       throw error;
     }
@@ -591,9 +630,79 @@ class TavilyClient {
       return response.data;
     } catch (error: any) {
       if (error.response?.status === 401) {
-        throw new Error('Invalid API key');
+        throw new Error(`Invalid API key. Documentation: ${this.docsURLs.map}`);
       } else if (error.response?.status === 429) {
-        throw new Error('Usage limit exceeded');
+        throw new Error(`Usage limit exceeded. Documentation: ${this.docsURLs.map}`);
+      }
+      throw error;
+    }
+  }
+
+  async research(params: any): Promise<TavilyResearchResponse> {
+    const INITIAL_POLL_INTERVAL = 2000; // 2 seconds in ms
+    const MAX_POLL_INTERVAL = 10000; // 10 seconds in ms
+    const POLL_BACKOFF_FACTOR = 1.5;
+    const MAX_PRO_MODEL_POLL_DURATION = 900000; // 15 minutes in ms
+    const MAX_MINI_MODEL_POLL_DURATION = 300000; // 5 minutes in ms
+
+    try {
+      const response = await this.axiosInstance.post(this.baseURLs.research, {
+        input: params.input,
+        model: params.model || 'auto',
+        api_key: API_KEY
+      });
+
+      const requestId = response.data.request_id;
+      if (!requestId) {
+        return { error: `No request_id returned from research endpoint. Documentation: ${this.docsURLs.research}` };
+      }
+
+      // For model=auto, use pro timeout since we don't know which model will be used
+      const maxPollDuration = params.model === 'mini'
+        ? MAX_MINI_MODEL_POLL_DURATION
+        : MAX_PRO_MODEL_POLL_DURATION;
+
+      let pollInterval = INITIAL_POLL_INTERVAL;
+      let totalElapsed = 0;
+
+      while (totalElapsed < maxPollDuration) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
+        totalElapsed += pollInterval;
+
+        try {
+          const pollResponse = await this.axiosInstance.get(
+            `${this.baseURLs.research}/${requestId}`
+          );
+
+          const status = pollResponse.data.status;
+
+          if (status === 'completed') {
+            const content = pollResponse.data.content;
+            return {
+              content: content || ''
+            };
+          }
+
+          if (status === 'failed') {
+            return { error: `Research task failed. Documentation: ${this.docsURLs.research}` };
+          }
+
+        } catch (pollError: any) {
+          if (pollError.response?.status === 404) {
+            return { error: 'Research task not found' };
+          }
+          throw pollError;
+        }
+
+        pollInterval = Math.min(pollInterval * POLL_BACKOFF_FACTOR, MAX_POLL_INTERVAL);
+      }
+
+      return { error: `Research task timed out. Documentation: ${this.docsURLs.research}` };
+    } catch (error: any) {
+      if (error.response?.status === 401) {
+        throw new Error(`Invalid API key. Documentation: ${this.docsURLs.research}`);
+      } else if (error.response?.status === 429) {
+        throw new Error(`Usage limit exceeded. Documentation: ${this.docsURLs.research}`);
       }
       throw error;
     }
@@ -667,35 +776,47 @@ function formatCrawlResults(response: TavilyCrawlResponse): string {
 
 function formatMapResults(response: TavilyMapResponse): string {
   const output: string[] = [];
-  
+
   output.push(`Site Map Results:`);
   output.push(`Base URL: ${response.base_url}`);
-  
+
   output.push('\nMapped Pages:');
   response.results.forEach((page, index) => {
     output.push(`\n[${index + 1}] URL: ${page}`);
   });
-  
+
   return output.join('\n');
+}
+
+function formatResearchResults(response: TavilyResearchResponse): string {
+  if (response.error) {
+    return `Research Error: ${response.error}`;
+  }
+
+  return response.content || 'No research results available';
 }
 
 function listTools(): void {
   const tools = [
     {
-      name: "tavily-search",
+      name: "tavily_search",
       description: "A real-time web search tool powered by Tavily's AI engine. Features include customizable search depth (basic/advanced/fast/ultra-fast), domain filtering, time-based filtering, and support for both general and news-specific searches. Returns comprehensive results with titles, URLs, content snippets, and optional image results."
     },
     {
-      name: "tavily-extract",
+      name: "tavily_extract",
       description: "Extracts and processes content from specified URLs with advanced parsing capabilities. Supports both basic and advanced extraction modes, with the latter providing enhanced data retrieval including tables and embedded content. Ideal for data collection, content analysis, and research tasks."
     },
     {
-      name: "tavily-crawl",
+      name: "tavily_crawl",
       description: "A sophisticated web crawler that systematically explores websites starting from a base URL. Features include configurable depth and breadth limits, domain filtering, path pattern matching, and category-based filtering. Perfect for comprehensive site analysis, content discovery, and structured data collection."
     },
     {
-      name: "tavily-map",
+      name: "tavily_map",
       description: "Creates detailed site maps by analyzing website structure and navigation paths. Offers configurable exploration depth, domain restrictions, and category filtering. Ideal for site audits, content organization analysis, and understanding website architecture and navigation patterns."
+    },
+    {
+      name: "tavily_research",
+      description: "Performs comprehensive research on any topic or question by gathering information from multiple sources. Supports different research depths ('mini' for narrow tasks, 'pro' for broad research, 'auto' for automatic selection). Ideal for in-depth analysis, report generation, and answering complex questions requiring synthesis of multiple sources."
     }
   ];
 

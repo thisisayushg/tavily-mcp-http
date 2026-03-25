@@ -29,6 +29,13 @@ interface TavilyCrawlResponse {
   response_time: number;
 }
 
+interface TavilyResearchResponse {
+  request_id?: string;
+  status?: string;
+  content?: string;
+  error?: string;
+}
+
 interface TavilyMapResponse {
   base_url: string;
   results: string[];
@@ -43,4 +50,4 @@ interface Arguments {
   $0: string;
 }
 
-export {TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments}
+export {TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments, TavilyResearchResponse}
