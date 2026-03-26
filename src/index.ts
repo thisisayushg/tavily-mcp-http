@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import { TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments, TavilyResearchResponse } from "./schema.js";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
 import { SUPPORTED_COUNTRY_NAMES } from "./constants.js";
+import { getName } from "i18n-iso-countries"
 
 dotenv.config();
 
@@ -576,6 +577,10 @@ class TavilyClient {
           cleanedParams[key] = value;
         }
       }
+
+      // Add fallback to convert ISO country code to fully qualified names
+      if (searchParams['country'].length == 2)
+          searchParams['country'] = getName(searchParams['country'].toLowerCase(), "en")
       
       const response = await this.axiosInstance.post(endpoint, cleanedParams);
       return response.data;
