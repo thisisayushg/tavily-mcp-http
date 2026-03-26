@@ -579,8 +579,8 @@ class TavilyClient {
       }
 
       // Add fallback to convert ISO country code to fully qualified names
-      if (searchParams['country'].length == 2)
-          searchParams['country'] = getName(searchParams['country'].toLowerCase(), "en")
+        if (searchParams['country'] && searchParams['country'].length == 2)
+            searchParams['country'] = getName(searchParams['country'].toLowerCase(), "en")
       
       const response = await this.axiosInstance.post(endpoint, cleanedParams);
       return response.data;
