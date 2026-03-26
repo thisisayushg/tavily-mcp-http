@@ -7,6 +7,7 @@ import axios from "axios";
 import dotenv from "dotenv";
 import { TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments, TavilyResearchResponse } from "./schema.js";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
+import { SUPPORTED_COUNTRY_NAMES } from "./constants.js";
 
 dotenv.config();
 
@@ -186,8 +187,9 @@ class TavilyClient {
               },
               country: {
                 type: "string",
-                description: "Boost search results from a specific country. Must be a full country name (e.g., 'United States', 'Japan', 'Germany'). ISO country codes (e.g., 'us', 'jp') are not supported. Available only if topic is general. See https://docs.tavily.com/documentation/api-reference/search for the full list of supported countries.",
-                default: ""
+                description: "search results from a specific country. Must be a full country name (not ISO country codes). Available only if topic is general.",
+                default: "",
+                enuM: SUPPORTED_COUNTRY_NAMES
               },
               include_favicon: {
                 type: "boolean",
