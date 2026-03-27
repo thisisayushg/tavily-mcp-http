@@ -7,7 +7,7 @@ import axios from "axios";
 import dotenv from "dotenv";
 import { TavilyResponse, TavilyCrawlResponse, TavilyMapResponse, Arguments, TavilyResearchResponse } from "./schema.js";
 import { McpError, ErrorCode } from "@modelcontextprotocol/sdk/types.js";
-import { SUPPORTED_COUNTRY_NAMES } from "./constants.js";
+import { SUPPORTED_COUNTRY_NAMES, tools } from "./constants.js";
 import countries from "i18n-iso-countries";
 
 dotenv.config();
@@ -75,7 +75,7 @@ class TavilyClient {
     });
   }
 
-  private getDefaultParameters(): Record<string, any> {
+  private getDefaultParameters(toolname: string = ''): Record<string, any> {
     /**Get default parameter values from environment variable.
      * 
      * The environment variable DEFAULT_PARAMETERS should contain a JSON string 
@@ -87,8 +87,22 @@ class TavilyClient {
      */
     try {
       const parametersEnv = process.env.DEFAULT_PARAMETERS;
-      
+      if (!toolname.startsWith('tavily'))
+        toolname = "tavily_" + toolname
       if (!parametersEnv) {
+        if (toolname)
+        {
+            let result = tools.find(t=>t.name == toolname)
+            let defaults: Record<string, any> = {};
+            if (result?.inputSchema?.properties)
+            {
+              for (let [field, schema] of Object.entries(result?.inputSchema?.properties || {})) {
+                if ((schema as any)?.default !== undefined)
+                  defaults[field] = (schema as any)?.default;
+              }
+              return defaults
+            }
+        }
         return {};
       }
       
@@ -113,279 +127,6 @@ class TavilyClient {
 
   private setupToolHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      // Define available tools: tavily_search and tavily_extract
-      const tools: Tool[] = [
-        {
-          name: "tavily_search",
-          description: "Search the web for current information on any topic. Use for news, facts, or data beyond your knowledge cutoff. Returns snippets and source URLs.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              query: { 
-                type: "string", 
-                description: "Search query" 
-              },
-              search_depth: {
-                type: "string",
-                enum: ["basic","advanced","fast","ultra-fast"],
-                description: "The depth of the search. 'basic' for generic results, 'advanced' for more thorough search, 'fast' for optimized low latency with high relevance, 'ultra-fast' for prioritizing latency above all else",
-                default: "basic"
-              },
-              topic : {
-                type: "string",
-                enum: ["general"],
-                description: "The category of the search. This will determine which of our agents will be used for the search",
-                default: "general"
-              },
-              time_range: {
-                type: "string",
-                description: "The time range back from the current date to include in the search results",
-                enum: ["day", "week", "month", "year"]
-              },
-              start_date: {
-                type: "string",
-                description: "Will return all results after the specified start date. Required to be written in the format YYYY-MM-DD.",
-                default: "",
-              },
-              end_date: { 
-                type: "string",
-                description: "Will return all results before the specified end date. Required to be written in the format YYYY-MM-DD",
-                default: "",
-              },
-              max_results: { 
-                type: "number", 
-                description: "The maximum number of search results to return",
-                default: 5,
-                minimum: 5,
-                maximum: 20
-              },
-              include_images: { 
-                type: "boolean", 
-                description: "Include a list of query-related images in the response",
-                default: false,
-              },
-              include_image_descriptions: { 
-                type: "boolean", 
-                description: "Include a list of query-related images and their descriptions in the response",
-                default: false
-              },
-              include_raw_content: {
-                type: "boolean",
-                description: "Include the cleaned and parsed HTML content of each search result",
-                default: false
-              },
-              include_domains: {
-                type: "array",
-                items: { type: "string" },
-                description: "A list of domains to specifically include in the search results, if the user asks to search on specific sites set this to the domain of the site",
-                default: []
-              },
-              exclude_domains: {
-                type: "array",
-                items: { type: "string" },
-                description: "List of domains to specifically exclude, if the user asks to exclude a domain set this to the domain of the site",
-                default: []
-              },
-              country: {
-                type: "string",
-                description: "search results from a specific country. Must be a full country name (not ISO country codes). Available only if topic is general.",
-                default: "",
-                enuM: SUPPORTED_COUNTRY_NAMES
-              },
-              include_favicon: {
-                type: "boolean",
-                description: "Whether to include the favicon URL for each result",
-                default: false
-              }
-            },
-            required: ["query"]
-          }
-        },
-        {
-          name: "tavily_extract",
-          description: "Extract content from URLs. Returns raw page content in markdown or text format.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              urls: { 
-                type: "array",
-                items: { type: "string" },
-                description: "List of URLs to extract content from"
-              },
-              extract_depth: { 
-                type: "string",
-                enum: ["basic", "advanced"],
-                description: "Use 'advanced' for LinkedIn, protected sites, or tables/embedded content",
-                default: "basic"
-              },
-              include_images: {
-                type: "boolean",
-                description: "Include images from pages",
-                default: false
-              },
-              format: {
-                type: "string",
-                enum: ["markdown", "text"],
-                description: "Output format",
-                default: "markdown"
-              },
-              include_favicon: {
-                type: "boolean",
-                description: "Include favicon URLs",
-                default: false
-              },
-              query: {
-                type: "string",
-                description: "Query to rerank content chunks by relevance"
-              }
-            },
-            required: ["urls"]
-          }
-        },
-        {
-          name: "tavily_crawl",
-          description: "Crawl a website starting from a URL. Extracts content from pages with configurable depth and breadth.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              url: {
-                type: "string",
-                description: "The root URL to begin the crawl"
-              },
-              max_depth: {
-                type: "integer",
-                description: "Max depth of the crawl. Defines how far from the base URL the crawler can explore.",
-                default: 1,
-                minimum: 1
-              },
-              max_breadth: {
-                type: "integer",
-                description: "Max number of links to follow per level of the tree (i.e., per page)",
-                default: 20,
-                minimum: 1
-              },
-              limit: {
-                type: "integer",
-                description: "Total number of links the crawler will process before stopping",
-                default: 50,
-                minimum: 1
-              },
-              instructions: {
-                type: "string",
-                description: "Natural language instructions for the crawler. Instructions specify which types of pages the crawler should return."
-              },
-              select_paths: {
-                type: "array",
-                items: { type: "string" },
-                description: "Regex patterns to select only URLs with specific path patterns (e.g., /docs/.*, /api/v1.*)",
-                default: []
-              },
-              select_domains: {
-                type: "array",
-                items: { type: "string" },
-                description: "Regex patterns to restrict crawling to specific domains or subdomains (e.g., ^docs\\.example\\.com$)",
-                default: []
-              },
-              allow_external: {
-                type: "boolean",
-                description: "Whether to return external links in the final response",
-                default: true
-              },
-              extract_depth: {
-                type: "string",
-                enum: ["basic", "advanced"],
-                description: "Advanced extraction retrieves more data, including tables and embedded content, with higher success but may increase latency",
-                default: "basic"
-              },
-              format: {
-                type: "string",
-                enum: ["markdown","text"],
-                description: "The format of the extracted web page content. markdown returns content in markdown format. text returns plain text and may increase latency.",
-                default: "markdown"
-              },
-              include_favicon: { 
-                type: "boolean", 
-                description: "Whether to include the favicon URL for each result",
-                default: false,
-              },
-            },
-            required: ["url"]
-          }
-        },
-        {
-          name: "tavily_map",
-          description: "Map a website's structure. Returns a list of URLs found starting from the base URL.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              url: {
-                type: "string",
-                description: "The root URL to begin the mapping"
-              },
-              max_depth: {
-                type: "integer",
-                description: "Max depth of the mapping. Defines how far from the base URL the crawler can explore",
-                default: 1,
-                minimum: 1
-              },
-              max_breadth: {
-                type: "integer",
-                description: "Max number of links to follow per level of the tree (i.e., per page)",
-                default: 20,
-                minimum: 1
-              },
-              limit: {
-                type: "integer",
-                description: "Total number of links the crawler will process before stopping",
-                default: 50,
-                minimum: 1
-              },
-              instructions: {
-                type: "string",
-                description: "Natural language instructions for the crawler"
-              },
-              select_paths: {
-                type: "array",
-                items: { type: "string" },
-                description: "Regex patterns to select only URLs with specific path patterns (e.g., /docs/.*, /api/v1.*)",
-                default: []
-              },
-              select_domains: {
-                type: "array",
-                items: { type: "string" },
-                description: "Regex patterns to restrict crawling to specific domains or subdomains (e.g., ^docs\\.example\\.com$)",
-                default: []
-              },
-              allow_external: {
-                type: "boolean",
-                description: "Whether to return external links in the final response",
-                default: true
-              }
-            },
-            required: ["url"]
-          }
-        },
-        {
-          name: "tavily_research",
-          description: "Perform comprehensive research on a given topic or question. Use this tool when you need to gather information from multiple sources to answer a question or complete a task. Returns a detailed response based on the research findings. Rate limit: 20 requests per minute.",
-          inputSchema: {
-            type: "object",
-            properties: {
-              input: {
-                type: "string",
-                description: "A comprehensive description of the research task"
-              },
-              model: {
-                type: "string",
-                enum: ["mini", "pro", "auto"],
-                description: "Defines the degree of depth of the research. 'mini' is good for narrow tasks with few subtopics. 'pro' is good for broad tasks with many subtopics. 'auto' automatically selects the best model.",
-                default: "auto"
-              }
-            },
-            required: ["input"]
-          }
-        },
-      ];
       return { tools };
     });
 
@@ -532,7 +273,7 @@ class TavilyClient {
     try {
       const endpoint = this.baseURLs.search;
       
-      const defaults = this.getDefaultParameters();
+      const defaults = this.getDefaultParameters("search");
       
       // Prepare the request payload
       const searchParams: any = {
