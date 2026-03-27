@@ -566,6 +566,10 @@ class TavilyClient {
       if ((searchParams.start_date || searchParams.end_date) && searchParams.time_range) {
         searchParams.time_range = undefined;
       }
+
+      // Add fallback to convert ISO country code to fully qualified names
+      if (searchParams['country'] && searchParams['country'].length == 2)
+          searchParams['country'] = countries.getName(searchParams['country'].toLowerCase(), "en")
       
       // Remove empty values
       const cleanedParams: any = {};
@@ -578,9 +582,6 @@ class TavilyClient {
         }
       }
 
-      // Add fallback to convert ISO country code to fully qualified names
-        if (searchParams['country'] && searchParams['country'].length == 2)
-            searchParams['country'] = countries.getName(searchParams['country'].toLowerCase(), "en")
       
       const response = await this.axiosInstance.post(endpoint, cleanedParams);
       return response.data;
