@@ -196,7 +196,8 @@ const tools: Tool[] = [
                 time_range: {
                     type: "string",
                     description: "The time range back from the current date to include in the search results",
-                    enum: ["day", "week", "month", "year"]
+                    enum: ["day", "week", "month", "year"],
+                    default: "year"
                 },
                 start_date: {
                     type: "string",
