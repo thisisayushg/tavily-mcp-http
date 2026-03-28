@@ -323,7 +323,26 @@ class TavilyClient {
         }
       }
 
-      
+      let result = tools.find(t=>t.name == 'tavily_search')
+      if (result?.inputSchema?.properties) {
+        for (let param of Object.keys(cleanedParams)) {
+            let props = result.inputSchema.properties;
+            let enum_values = (props[param] as any)?.enum ?? [];
+
+            if (!(param in props))
+                // skip keys like api-key
+                continue
+            // console.log(enum_values)
+            // console.log(`Cleaned Param = ${cleanedParams[param]}`)
+            if (!enum_values.includes(cleanedParams[param])){
+                // Replace the param value with default (if exists) since no valid value was provided
+                console.log(`${param}'default = ${(props[param] as any)?.default}`)
+                cleanedParams[param] = (props[param] as any)?.default ?? cleanedParams[param];
+                // console.debug(`Replaced ${param}'s value with ${cleanedParams[param]} since no valid value was provided`);
+            }
+        }
+    }
+            
       const response = await this.axiosInstance.post(endpoint, cleanedParams);
       return response.data;
     } catch (error: any) {
