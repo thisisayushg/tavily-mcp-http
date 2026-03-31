@@ -597,11 +597,11 @@ function listTools(): void {
 }
 
 // ... (Your existing tool definitions and server initialization here) ...
-const server = new TavilyClient()
 const app = express();
 app.use(express.json());
 
 app.all("/mcp", async (req, res) => {
+  const server = new TavilyClient()
   // Create a new transport for each session
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: undefined, // Uses default UUIDs
